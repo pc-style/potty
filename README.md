@@ -23,13 +23,17 @@ fuzzy    fukcing 3  pelase 1  sh!t 1
 potty needs [Bun](https://bun.sh) 1.2 or newer.
 
 ```sh
-bunx potty               # counts per harness, and the words behind them
-bunx potty log           # by week, plus what your sessions show
-bunx potty watch         # each new hit as you type it
-bunx potty statusline    # today's counts on one line
-bunx potty harnesses     # where potty looks and what it found
-bunx potty try "wtf, plz fix thx"
+bun add -g @pc_style/potty   # installs the `potty` command
+
+potty               # counts per harness, and the words behind them
+potty log           # by week, plus what your sessions show
+potty watch         # each new hit as you type it
+potty statusline    # today's counts on one line
+potty harnesses     # where potty looks and what it found
+potty try "wtf, plz fix thx"
 ```
+
+Or without installing: `bunx @pc_style/potty`.
 
 Every command has `--help` with its options and examples. The common ones:
 
@@ -116,7 +120,7 @@ abbreviation or misspelling) or `variant` (worked out by the matcher).
 Claude Code, in `~/.claude/settings.json`:
 
 ```json
-{ "statusLine": { "type": "command", "command": "bunx potty statusline" } }
+{ "statusLine": { "type": "command", "command": "bunx @pc_style/potty statusline" } }
 ```
 
 ## Credits

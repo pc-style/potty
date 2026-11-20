@@ -1,5 +1,5 @@
 {
-	"name": "potty",
+	"name": "@pc_style/potty",
 	"version": "0.0.1",
 	"description": "Counts the swears, manners, love and apologies in what you type to coding agents. Typos included.",
 	"keywords": [
