@@ -1,0 +1,6 @@
+{
+	"useTabs": true,
+	"printWidth": 180,
+	"semi": false,
+	"ignorePatterns": ["src/safe.gen.ts"]
+}

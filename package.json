@@ -1,0 +1,53 @@
+{
+	"name": "potty",
+	"version": "0.0.1",
+	"description": "Counts the swears, manners, love and apologies in what you type to coding agents. Typos included.",
+	"keywords": [
+		"amp",
+		"bun",
+		"claude-code",
+		"cli",
+		"codex",
+		"coding-agents",
+		"profanity",
+		"stats",
+		"swear"
+	],
+	"homepage": "https://github.com/pc-style/potty#readme",
+	"bugs": "https://github.com/pc-style/potty/issues",
+	"license": "MIT",
+	"author": "pc-style",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/pc-style/potty.git"
+	},
+	"bin": {
+		"potty": "src/cli.ts"
+	},
+	"files": [
+		"src"
+	],
+	"type": "module",
+	"scripts": {
+		"start": "bun src/cli.ts",
+		"test": "bun test",
+		"typecheck": "tsrs --noEmit --fast",
+		"lint": "oxlint src scripts test",
+		"format": "oxfmt .",
+		"format:check": "oxfmt --check .",
+		"check": "bun run typecheck && bun run lint && bun run format:check && bun test",
+		"gen:safe": "bun scripts/gen-safe.ts"
+	},
+	"dependencies": {
+		"effect": "^4.1.5"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.4.5",
+		"oxfmt": "^0.79.0",
+		"oxlint": "^1.94.0",
+		"tsrs": "^7.1.0-beta.tsrs3"
+	},
+	"engines": {
+		"bun": ">=1.2"
+	}
+}

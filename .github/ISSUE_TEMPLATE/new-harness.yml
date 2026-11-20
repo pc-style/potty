@@ -1,0 +1,26 @@
+name: Support a harness
+description: Ask potty to read another coding agent's sessions.
+labels: [harness]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Harness
+      description: Name and link.
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where it stores sessions
+      description: Paths on macOS and Linux, and the file type (JSONL, JSON, SQLite).
+    validations:
+      required: true
+  - type: textarea
+    id: shape
+    attributes:
+      label: One user message, as stored
+      description: Paste one record with your own text replaced by placeholder words. Keep the field names and structure.
+      render: json
+    validations:
+      required: true

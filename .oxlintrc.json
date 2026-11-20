@@ -1,0 +1,5 @@
+{
+	"categories": { "correctness": "error" },
+	"rules": { "no-control-regex": "off" },
+	"ignorePatterns": ["src/safe.gen.ts"]
+}

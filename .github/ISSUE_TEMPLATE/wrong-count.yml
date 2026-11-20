@@ -1,0 +1,25 @@
+name: Wrong count
+description: potty counted something it should not have, or missed something.
+labels: [matcher]
+body:
+  - type: textarea
+    id: text
+    attributes:
+      label: The text
+      description: The shortest sentence that shows the problem. No private content.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output of potty try
+      description: Run `potty try "<the text>"` and paste what it prints.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: expected
+    attributes:
+      label: What it should have found
+    validations:
+      required: true
