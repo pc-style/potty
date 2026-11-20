@@ -1,5 +1,6 @@
 import { Data, Effect, Result } from "effect"
 import { ADAPTERS, type Source } from "./adapters"
+import { remote } from "./adapters/amp"
 import { clean, scan } from "./match"
 import type { NewRow, Store } from "./store"
 
@@ -16,6 +17,7 @@ const CANNED = [
 	/^This session is being continued from a previous/,
 	/^\[Request interrupted by user/,
 	/^Continuing work from thread T-/,
+	/^The user just created this Space,/,
 ]
 
 /** Longer than this after cleaning is a paste (a log, a transcript), so it counts as a message but its words do not. */
@@ -60,20 +62,42 @@ const read = (source: Source) =>
  * Brings the index up to date: scans sources that are new or changed on disk and
  * forgets ones that are gone. A source that cannot be read is reported, not fatal.
  */
-export const sync = (store: Store, only?: ReadonlyArray<string>): Effect.Effect<SyncResult> =>
+export interface SyncOptions {
+	readonly only?: ReadonlyArray<string> | undefined
+	/** Also fetch Amp threads with `amp threads export`. Slow on the first run; needs the network. */
+	readonly ampRemote?: boolean
+	readonly progress?: (done: number, total: number) => void
+}
+
+export class RemoteError extends Data.TaggedError("RemoteError")<{ readonly message: string }> {}
+
+export const sync = (store: Store, options: SyncOptions = {}): Effect.Effect<SyncResult, RemoteError> =>
 	Effect.gen(function* () {
+		const { only } = options
 		const adapters = ADAPTERS.filter((a) => !only || only.includes(a.name))
-		const sources = adapters.flatMap((a) => a.discover())
-		store.prune(
-			adapters.map((a) => a.name),
-			new Set(sources.map((s) => s.path)),
-		)
+		const local = adapters.flatMap((a) => a.discover())
+		const fetchRemote = options.ampRemote === true && (!only || only.includes("amp"))
+		const remoteSources = fetchRemote
+			? yield* Effect.tryPromise({ try: remote, catch: (cause) => new RemoteError({ message: cause instanceof Error ? cause.message : String(cause) }) })
+			: []
+		const sources = [...local, ...remoteSources]
+		store.prune([...adapters.map((a) => a.name), ...(fetchRemote ? ["amp-remote"] : [])], new Set(sources.map((s) => s.path)))
 		const stale = store.stale(sources)
-		const results = yield* Effect.forEach(stale, (source) => Effect.result(read(source)).pipe(Effect.map((result) => ({ source, result }))), { concurrency: 16 })
+		let done = 0
 		const failures: ReadError[] = []
-		for (const { source, result } of results) {
-			if (Result.isSuccess(result)) store.replace(source, result.success)
-			else failures.push(result.failure)
-		}
+		// Each source is saved as soon as it is read, so an interrupted run keeps its progress.
+		yield* Effect.forEach(
+			stale,
+			(source) =>
+				Effect.result(read(source)).pipe(
+					Effect.map((result) => {
+						if (Result.isSuccess(result)) store.replace(source, result.success)
+						else failures.push(result.failure)
+						options.progress?.(++done, stale.length)
+					}),
+				),
+			// Each Amp export is its own process and network call.
+			{ concurrency: fetchRemote ? 8 : 16, discard: true },
+		)
 		return { sources: sources.length, scanned: stale.length, failures }
 	})

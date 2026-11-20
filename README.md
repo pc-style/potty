@@ -43,6 +43,7 @@ Every command has `--help` with its options and examples. The common ones:
 | `--harness amp,codex` | Only these harnesses.                                                               |
 | `--by model`          | For `log`: `day`, `week`, `month`, `hour`, `weekday`, `harness`, `model` or `repo`. |
 | `--json`              | JSON instead of a table.                                                            |
+| `--amp-remote`        | Also fetch Amp threads with `amp threads export`. See below.                        |
 | `--no-scan`           | Answer from the index without reading session files.                                |
 
 ## What it counts
@@ -60,24 +61,35 @@ words of any message longer than 4,000 characters, which is a paste.
 
 ## What it reads
 
-| Harness                     | Where                                                                         |
-| --------------------------- | ----------------------------------------------------------------------------- |
-| Amp                         | `~/.local/share/amp/threads`                                                  |
-| Claude Code                 | `~/.claude/projects`                                                          |
-| Codex                       | `~/.codex/sessions` and `~/.codex/archived_sessions`, including `.zst`        |
-| T3 Code                     | `~/.t3/userdata/statev2.sqlite`                                               |
-| Zed                         | `threads/threads.db` in Zed's data directory                                  |
-| pi                          | `~/.pi/agent/sessions`                                                        |
-| opencode                    | `~/.local/share/opencode/opencode.db`                                         |
-| Antigravity (`agy`)         | `~/.gemini/antigravity-cli/conversations`                                     |
-| eukhe                       | `~/.eukhe/sessions`                                                           |
-| Grok, Factory Droid, Cursor | Written from their documented formats, not yet checked against real sessions. |
+| Harness                                  | Where                                                                                   |
+| ---------------------------------------- | --------------------------------------------------------------------------------------- |
+| Amp                                      | `~/.local/share/amp/threads`, and with `--amp-remote` every thread on your account      |
+| Claude Code                              | `~/.claude/projects`                                                                    |
+| Codex                                    | `~/.codex/sessions` and `~/.codex/archived_sessions`, including `.zst`                  |
+| T3 Code                                  | `~/.t3/userdata/statev2.sqlite`                                                         |
+| Zed                                      | `threads/threads.db` in Zed's data directory                                            |
+| pi                                       | `~/.pi/agent/sessions`                                                                  |
+| prime-agent                              | `~/.prime/agent/sessions`, or `PRIME_AGENT_SESSION_DIR`                                 |
+| opencode                                 | `~/.local/share/opencode/opencode.db`                                                   |
+| Antigravity (`agy`)                      | `~/.gemini/antigravity-cli/conversations`                                               |
+| eukhe                                    | `~/.eukhe/sessions`                                                                     |
+| prime-agent, Grok, Factory Droid, Cursor | Written from their source or documented formats, not yet checked against real sessions. |
 
 T3 Code is a front end for other harnesses, so its messages are filed under the
 harness that ran them, and a message stored by both is counted once.
 
 Missing a harness? [Open an issue](https://github.com/pc-style/potty/issues/new?template=new-harness.yml)
 or add it yourself: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Amp threads
+
+Amp stopped writing threads to `~/.local/share/amp/threads` in spring 2026, so
+potty reads newer ones through the `amp` CLI when you pass `--amp-remote` (or set
+`POTTY_AMP_REMOTE=1`). It needs `amp` installed and signed in, and covers the
+signed-in account only. The first run exports every thread, about a second each
+with eight at a time, so an hour for 3,000 threads. It saves as it goes, so you can
+stop it and run it again later. After that, only threads that changed are exported.
+Messages that other agents, automations or plugins sent into a thread do not count.
 
 ## Speed and privacy
 
@@ -89,10 +101,11 @@ never your messages.
 
 ## Environment
 
-| Variable      | Meaning                                                                                             |
-| ------------- | --------------------------------------------------------------------------------------------------- |
-| `POTTY_INDEX` | Path of the index. Default: `~/.local/share/potty/index.sqlite`, or under `XDG_DATA_HOME` when set. |
-| `NO_COLOR`    | Set to turn colors off. They are also off when output is not a terminal.                            |
+| Variable           | Meaning                                                                                             |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| `POTTY_INDEX`      | Path of the index. Default: `~/.local/share/potty/index.sqlite`, or under `XDG_DATA_HOME` when set. |
+| `POTTY_AMP_REMOTE` | Set to `1` to always fetch Amp threads, as `--amp-remote` does.                                     |
+| `NO_COLOR`         | Set to turn colors off. They are also off when output is not a terminal.                            |
 
 ## For scripts and agents
 

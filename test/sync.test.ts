@@ -56,6 +56,50 @@ beforeAll(() => {
 		insert into projection_thread_messages values ('t', 'assistant', 'fuck', '2026-11-20T10:01:05.000Z');
 	`)
 	t3.close()
+
+	put(".eukhe/sessions/e1/main.jsonl", [
+		{ type: "commit", writes: [{ type: "entry", value: { kind: "pi.user", model: [{ role: "user", content: [{ type: "text", text: "wtf, pls" }], timestamp: 1795000000000 }] } }] },
+		{ type: "commit", writes: [{ type: "entry", value: { kind: "pi.assistant", model: [{ role: "assistant", provider: "openai-codex", model: "gpt-6.1-sol" }] } }] },
+		// Appended by durable work but typed by the user: no origin tag.
+		{
+			type: "commit",
+			writes: [{ type: "entry", value: { kind: "pi.user", byTaskId: 3, model: [{ role: "user", content: [{ type: "text", text: "thanks" }], timestamp: 1795000060000 }] } }],
+		},
+		{
+			type: "commit",
+			writes: [{ type: "entry", value: { kind: "pi.user", byTaskId: 4, data: { origin: { kind: "goal" } }, model: [{ role: "user", content: "fuck", timestamp: 1 }] } }],
+		},
+		{ type: "commit", writes: [{ type: "entry", value: { kind: "pi.user", data: { origin: { kind: "report" } }, model: [{ role: "user", content: "shit", timestamp: 1 }] } }] },
+	])
+	put(".eukhe/sessions/e1/doc-6.jsonl", [{ type: "record", payload: { content: { kind: "base", value: { model: { modelId: "first-model" }, cwd: "/work/bot" } } } }])
+
+	put(".prime/agent/sessions/p1.jsonl", [
+		{ type: "session", version: 3, id: "p1", timestamp: at, cwd: "/work/prime", rlmDepth: 0 },
+		{ type: "message", timestamp: at, message: { role: "user", content: "sorry, my mistake", timestamp: 1795000000000 } },
+	])
+	put(".prime/agent/sessions/p2.jsonl", [
+		{ type: "session", version: 3, id: "p2", timestamp: at, cwd: "/work/prime", rlmDepth: 1 },
+		{ type: "message", timestamp: at, message: { role: "user", content: "fuck", timestamp: 1795000000000 } },
+	])
+
+	mkdirSync(join(home, ".local/share/amp/threads"), { recursive: true })
+	writeFileSync(
+		join(home, ".local/share/amp/threads/T-a.json"),
+		JSON.stringify({
+			id: "T-a",
+			created: 1795000000000,
+			env: { initial: { trees: [{ uri: "file:///home/user/workspace/repo", repository: { url: "https://github.com/me/site" } }] } },
+			messages: [
+				{ role: "user", meta: { sentAt: 1795000000000 }, content: [{ type: "text", text: "plz fix" }] },
+				{ role: "assistant", usage: { model: "claude-opus-5-5", timestamp: at }, content: [] },
+				{ role: "user", meta: { fromExecutorThreadID: "T-b" }, content: [{ type: "text", text: "Worker report: fuck" }] },
+				{ role: "user", meta: { modelSwitch: { to: "x" } }, content: [{ type: "text", text: "plz fix" }] },
+				{ role: "user", meta: { sentAt: 1795000600000 }, content: [{ type: "text", text: "wtf" }] },
+				{ role: "user", meta: { sentAt: 1795000630000, steer: true }, content: [{ type: "text", text: "wtf" }] },
+				{ role: "user", content: [{ type: "tool_result", toolUseID: "t", run: { result: "shit" } }] },
+			],
+		}),
+	)
 })
 
 afterAll(() => {
@@ -71,7 +115,15 @@ test("counts what the user typed, once, under the harness that ran it", async ()
 	expect(Object.fromEntries(tally(rows, (row) => row.harness))).toEqual({
 		claude: { msgs: 2, swear: 2, manners: 2, love: 1, sorry: 0 },
 		codex: { msgs: 3, swear: 1, manners: 1, love: 0, sorry: 1 },
+		eukhe: { msgs: 2, swear: 1, manners: 2, love: 0, sorry: 0 },
+		prime: { msgs: 1, swear: 0, manners: 0, love: 0, sorry: 1 },
+		amp: { msgs: 2, swear: 1, manners: 1, love: 0, sorry: 0 },
 	})
+	expect(rows.filter((row) => row.harness === "eukhe").map((row) => [row.ts, row.model, row.repo])).toEqual([
+		[1795000000000, "gpt-6.1-sol", "bot"],
+		[1795000060000, "first-model", "bot"],
+	])
+	expect(rows.find((row) => row.harness === "amp")).toMatchObject({ model: "claude-opus-5-5", repo: "site", ts: 1795000000000 })
 	expect(rows.find((row) => row.harness === "claude")).toMatchObject({ model: "claude-opus-5-5", repo: "app", seq: 1 })
 	expect(rows.filter((row) => row.via === "t3code").length).toBe(2)
 

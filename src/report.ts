@@ -14,7 +14,10 @@ const MIRROR_WINDOW = 10 * 60_000
  * of the same message (same text, within ten minutes) so nothing counts twice.
  */
 export function load(store: Store, filter: Filter = {}): Row[] {
-	const all = store.rows()
+	// An Amp thread fetched with --amp-remote replaces its copy in the old local folder.
+	const rows = store.rows()
+	const exported = new Set(rows.filter((row) => row.path.startsWith("amp:")).map((row) => row.session))
+	const all = exported.size ? rows.filter((row) => row.harness !== "amp" || row.path.startsWith("amp:") || !exported.has(row.session)) : rows
 	const natives = new Map<string, Row[]>()
 	for (const row of all) {
 		if (row.mirror) continue
@@ -131,7 +134,7 @@ export function ledger(rows: ReadonlyArray<Row>, everyWord = false): string {
 	const sessions = new Set(rows.map((row) => `${row.harness}/${row.session}`)).size
 	const viaT3 = rows.filter((row) => row.via === "t3code").length
 	const span = times.length ? `, ${day(Math.min(...times))} to ${day(Math.max(...times))}` : ""
-	out.push("", dim(`${num(total.msgs)} messages in ${num(sessions)} sessions${span}.${viaT3 ? ` ${num(viaT3)} were sent through T3 Code.` : ""}`))
+	out.push("", dim(`${num(total.msgs)} messages in ${num(sessions)} sessions${span}.${viaT3 ? ` ${num(viaT3)} ${viaT3 === 1 ? "was" : "were"} sent through T3 Code.` : ""}`))
 	return out.join("\n")
 }
 

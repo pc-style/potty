@@ -16,6 +16,7 @@ const SINCE = "  --since <when>     only messages from then on: 7d, 12h, 2w, 3m,
 const HARNESS = `  --harness <names>  only these, comma-separated: ${NAMES}`
 const JSON_FLAG = "  --json             print JSON instead of a table"
 const NO_SCAN = "  --no-scan          answer from the index as it is, without reading session files"
+const AMP_REMOTE = "  --amp-remote       also fetch Amp threads with `amp threads export` (needs a login; the first run takes about a second per thread). Or set POTTY_AMP_REMOTE=1"
 
 const HELP: Record<Command | "top", string> = {
 	top: `potty counts the swears, manners, love and apologies in what you type to coding agents.
@@ -52,9 +53,11 @@ ${HARNESS}
   --all              list every word, not the top eight
 ${JSON_FLAG}
 ${NO_SCAN}
+${AMP_REMOTE}
 
 Examples:
   potty
+  potty scan --amp-remote
   potty scan --since 7d
   potty scan --harness amp,codex --all
   potty scan --json | jq .total.swear`,
@@ -69,6 +72,7 @@ ${SINCE}
 ${HARNESS}
 ${JSON_FLAG}
 ${NO_SCAN}
+${AMP_REMOTE}
 
 Examples:
   potty log
@@ -126,11 +130,11 @@ Examples:
 }
 
 const FLAGS: Record<Command, ReadonlyArray<string>> = {
-	scan: ["since", "harness", "all", "json", "no-scan"],
-	log: ["by", "limit", "since", "harness", "json", "no-scan"],
+	scan: ["since", "harness", "all", "json", "no-scan", "amp-remote"],
+	log: ["by", "limit", "since", "harness", "json", "no-scan", "amp-remote"],
 	watch: ["harness", "json"],
 	statusline: ["harness", "json", "no-scan"],
-	harnesses: ["json", "no-scan"],
+	harnesses: ["json", "no-scan", "amp-remote"],
 	try: ["json"],
 }
 const TAKES_VALUE = new Set(["since", "harness", "by", "limit"])
@@ -150,6 +154,7 @@ interface Options {
 	readonly show: "help" | "version" | null
 	readonly json: boolean
 	readonly scan: boolean
+	readonly ampRemote: boolean
 	readonly all: boolean
 	readonly since: number | undefined
 	readonly harnesses: ReadonlyArray<string> | undefined
@@ -206,6 +211,7 @@ function parseArgs(argv: ReadonlyArray<string>): Options {
 		show,
 		json: flags.has("json"),
 		scan: !flags.has("no-scan"),
+		ampRemote: flags.has("amp-remote") || process.env["POTTY_AMP_REMOTE"] === "1",
 		all: flags.has("all"),
 		since: since === undefined ? undefined : parseSince(since),
 		harnesses: only,
@@ -223,12 +229,12 @@ const warn = (result: SyncResult): void => {
 
 const watch = (store: Store, options: Options) =>
 	Effect.gen(function* () {
-		yield* sync(store, options.harnesses)
+		yield* sync(store, { only: options.harnesses })
 		const seen = new Set(load(store).map((row) => row.key))
 		if (!options.json) console.error(dim("watching. ctrl-c to stop."))
 		yield* Effect.repeat(
 			Effect.gen(function* () {
-				warn(yield* sync(store, options.harnesses))
+				warn(yield* sync(store, { only: options.harnesses }))
 				const rows = load(store, { harnesses: options.harnesses })
 				const today = rows.filter((row) => row.ts !== null && row.ts >= startOfToday())
 				for (const row of rows) {
@@ -262,7 +268,12 @@ const run = (options: Options) =>
 		}
 		const store = openStore()
 		if (command === "watch") return yield* watch(store, options)
-		if (options.scan) warn(yield* sync(store))
+		if (options.scan) {
+			const tty = process.stderr.isTTY === true
+			const progress =
+				options.ampRemote && tty ? (done: number, total: number) => process.stderr.write(`\rreading ${done}/${total} sessions${done === total ? "\n" : ""}`) : undefined
+			warn(yield* sync(store, { ampRemote: options.ampRemote, ...(progress ? { progress } : {}) }))
+		}
 
 		if (command === "harnesses") {
 			const list = harnessList(load(store), new Map(ADAPTERS.map((a) => [a.name, a.discover().length])))

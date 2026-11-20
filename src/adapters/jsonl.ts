@@ -1,4 +1,4 @@
-import { basename, dirname } from "node:path"
+import { basename, dirname, join } from "node:path"
 import { type Adapter, type Message, bytes, fileSource, files, home, lines, linesWith, parse, parseTime, repoName, subdirs, textOf } from "./util"
 
 const MODEL = /"model":"([^"]+)"/
@@ -86,28 +86,52 @@ export const pi: Adapter = {
 	discover: () => files(home(".pi", "agent", "sessions"), (name) => name.endsWith(".jsonl"), 1).flatMap((path) => fileSource("pi", path, readPi)),
 }
 
+const primeSessions = (): string => {
+	const env = process.env
+	const dir = env["PRIME_AGENT_CODING_AGENT_SESSION_DIR"] ?? env["PRIME_AGENT_SESSION_DIR"]
+	if (dir) return dir
+	const agentDir = env["PRIME_AGENT_CODING_AGENT_DIR"]
+	return agentDir ? join(agentDir, "sessions") : home(".prime", "agent", "sessions")
+}
+
+/**
+ * prime-agent, a fork of pi: ~/.prime/agent/sessions/<session>.jsonl in pi's format.
+ * Unverified: read from its source, no local sessions to check against.
+ */
+export const prime: Adapter = {
+	name: "prime",
+	label: "prime-agent",
+	verified: false,
+	discover: () => files(primeSessions(), (name) => name.endsWith(".jsonl"), 1).flatMap((path) => fileSource("prime", path, readPi)),
+}
+
 async function readPi(path: string): Promise<Message[]> {
 	const out: Message[] = []
 	const session = basename(path, ".jsonl")
 	let model: string | null = null
 	let repo: string | null = null
 	for (const line of await lines(path)) {
-		if (line.startsWith('{"type":"session"')) repo = repoName(parse(line)?.cwd)
-		else if (line.startsWith('{"type":"model_change"')) model = parse(line)?.modelId ?? model
+		if (line.startsWith('{"type":"session"')) {
+			const header = parse(line)
+			// Subagent sessions carry prompts written by the parent agent.
+			if (header?.parentSession || (typeof header?.rlmDepth === "number" && header.rlmDepth > 0)) return []
+			repo = repoName(header?.cwd)
+		} else if (line.startsWith('{"type":"model_change"')) model = parse(line)?.modelId ?? model
 		else if (line.includes('"role":"user"')) {
 			const entry = parse(line)
 			if (entry?.type !== "message" || entry.message?.role !== "user") continue
 			const text = textOf(entry.message.content)
-			if (text) out.push({ session, ts: parseTime(entry.timestamp), model, repo, text })
+			if (text) out.push({ session, ts: parseTime(entry.message.timestamp ?? entry.timestamp), model, repo, text })
 		}
 	}
 	return out
 }
 
 /**
- * ~/.eukhe/sessions/<session>/main.jsonl, a log of commits. A typed message is an
- * entry of kind `pi.user`. Entries carry no time, so each takes the start time of
- * the first task after it, or the time encoded in the session's UUIDv7.
+ * ~/.eukhe/sessions/<session>/main.jsonl, a log of commits. A message is an entry of
+ * kind `pi.user`; eukhe tags inputs it wrote itself with `data.origin`, and only
+ * untagged, `user` and `loop` inputs come from the user. ~/.eukhe/chat repeats the
+ * same messages, so it is not read.
  */
 export const eukhe: Adapter = {
 	name: "eukhe",
@@ -116,31 +140,48 @@ export const eukhe: Adapter = {
 	discover: () => subdirs(home(".eukhe", "sessions")).flatMap((dir) => fileSource("eukhe", `${dir}/main.jsonl`, readEukhe)),
 }
 
+const TYPED_ORIGINS = new Set(["user", "loop"])
+
 async function readEukhe(path: string): Promise<Message[]> {
-	const session = basename(dirname(path))
-	const started = Number.parseInt(session.replace(/-/g, "").slice(0, 12), 16)
-	const fallback = started > 1e12 && started < 1e13 ? started : null
+	const dir = dirname(path)
+	const session = basename(dir)
+	const settings = await eukheSettings(dir)
 	const out: Message[] = []
-	let waiting = 0
-	for (const line of await lines(path)) {
-		const at = /"startedAt":(\d{13})/.exec(line)?.[1]
-		if (at && waiting) {
-			for (let i = out.length - waiting; i < out.length; i++) out[i] = { ...out[i]!, ts: Number(at) }
-			waiting = 0
-		}
-		if (!line.includes('"kind":"pi.user"')) continue
-		for (const write of parse(line)?.writes ?? []) {
+	let waiting = 0 // messages not yet answered, so not yet tied to a model
+	const data = await bytes(path)
+	for (const { start, end } of linesWith(data, ['"kind":"pi.user"', '"kind":"pi.assistant"'])) {
+		for (const write of parse(data.toString("utf8", start, end))?.writes ?? []) {
 			const value = write?.value
-			if (write?.type !== "entry" || value?.kind !== "pi.user" || value.byTaskId !== undefined) continue
+			if (write?.type !== "entry") continue
+			if (value?.kind === "pi.assistant") {
+				const model = value.model?.find((m: any) => typeof m?.model === "string")?.model
+				if (model && waiting) for (let i = out.length - waiting; i < out.length; i++) out[i] = { ...out[i]!, model }
+				if (model) waiting = 0
+				continue
+			}
+			if (value?.kind !== "pi.user") continue
+			const origin = value.data?.origin?.kind
+			if (origin !== undefined && !TYPED_ORIGINS.has(origin)) continue
 			for (const message of value.model ?? []) {
 				const text = message?.role === "user" ? textOf(message.content) : ""
 				if (!text) continue
-				out.push({ session, ts: fallback, model: null, repo: null, text })
+				out.push({ session, ts: parseTime(message.timestamp), model: settings.model, repo: settings.repo, text })
 				waiting++
 			}
 		}
 	}
 	return out
+}
+
+/** The session's settings document, one of its doc-N.jsonl files: the first record's value holds `cwd` and `model`. */
+async function eukheSettings(dir: string): Promise<{ repo: string | null; model: string | null }> {
+	for (const path of files(dir, (name) => /^doc-\d+\.jsonl$/.test(name))) {
+		const first = (await Bun.file(path).slice(0, 8192).text()).split("\n")[0] ?? ""
+		if (!first.includes('"cwd"')) continue
+		const value = parse(first)?.payload?.content?.value
+		if (typeof value?.cwd === "string") return { repo: repoName(value.cwd), model: value.model?.modelId ?? null }
+	}
+	return { repo: null, model: null }
 }
 
 /**

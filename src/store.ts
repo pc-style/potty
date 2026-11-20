@@ -27,7 +27,7 @@ export type NewRow = Omit<Row, "key" | "path">
 export const count = (row: Row, cat: Category): number => row.hits.reduce((n, hit) => n + (hit.cat === cat ? 1 : 0), 0)
 
 // Bump when the tables or what adapters extract changes; every file is then rescanned.
-const SCHEMA = 1
+const SCHEMA = 3
 const version = SCHEMA * 1000 + LEXICON_VERSION
 
 export function openStore(path = process.env["POTTY_INDEX"] ?? dataHome("potty", "index.sqlite")) {
